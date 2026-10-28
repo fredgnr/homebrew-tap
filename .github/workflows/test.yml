@@ -1,0 +1,57 @@
+name: Homebrew
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Install and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      HOMEBREW_NO_ANALYTICS: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_ASK: '1'
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@d482da0e602890d3160aade42e72c8556103bf04
+        with:
+          core: false
+          cask: false
+          stable: true
+      - name: Verify checked-out tap revision
+        shell: bash
+        run: |
+          test "$(git -C "$(brew --repository fredgnr/tap)" rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Formula style
+        run: brew style fredgnr/tap/gopls-mcp-proxy
+      - name: Install release binary and dependencies
+        run: brew install --formula fredgnr/tap/gopls-mcp-proxy
+      - name: Audit formula
+        run: brew audit --strict --formula fredgnr/tap/gopls-mcp-proxy
+      - name: Real gopls MCP smoke test
+        run: brew test fredgnr/tap/gopls-mcp-proxy
+      - name: Check stable command and uninstall
+        shell: bash
+        run: |
+          test -x "$(brew --prefix)/bin/gopls-mcp-proxy"
+          "$(brew --prefix)/bin/gopls-mcp-proxy" --version
+          brew uninstall --formula fredgnr/tap/gopls-mcp-proxy
+          test ! -e "$(brew --prefix)/bin/gopls-mcp-proxy"
+          test -x "$(brew --prefix gopls)/bin/gopls"
