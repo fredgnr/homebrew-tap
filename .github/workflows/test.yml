@@ -41,12 +41,44 @@ jobs:
           test "$(git -C "$(brew --repository fredgnr/tap)" rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Formula style
         run: brew style fredgnr/tap/gopls-mcp-proxy
-      - name: Install release binary and dependencies
-        run: brew install --formula fredgnr/tap/gopls-mcp-proxy
+      - name: Install release binary without dependencies
+        shell: bash
+        run: |
+          test -z "$(brew deps --include-build --include-test fredgnr/tap/gopls-mcp-proxy)"
+          brew list --formula | sort > "$RUNNER_TEMP/formulas-before.txt"
+          brew install --formula fredgnr/tap/gopls-mcp-proxy
+          brew list --formula | sed '/^gopls-mcp-proxy$/d' | sort > "$RUNNER_TEMP/formulas-after.txt"
+          diff -u "$RUNNER_TEMP/formulas-before.txt" "$RUNNER_TEMP/formulas-after.txt"
       - name: Audit formula
         run: brew audit --strict --formula fredgnr/tap/gopls-mcp-proxy
-      - name: Real gopls MCP smoke test
+      - name: Self-contained proxy smoke test
         run: brew test fredgnr/tap/gopls-mcp-proxy
+      - name: Check out the shared MCP integration test
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: fredgnr/gopls-mcp-proxy
+          # Pin the reviewed smoke test independently of later upstream changes.
+          ref: 55fd64807ecff62e7164ed1582a27980140bcb60
+          path: proxy-source
+          sparse-checkout: scripts/homebrew/smoke.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Set up user-managed Go for integration tests only
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Install user-managed gopls for integration tests only
+        env:
+          GOBIN: ${{ runner.temp }}/gopls-bin
+          GOTOOLCHAIN: local
+        run: go install golang.org/x/tools/gopls@v0.24.0
+      - name: Real gopls MCP with user-configured PATH and explicit backend
+        shell: bash
+        run: |
+          python3 proxy-source/scripts/homebrew/smoke.py \
+            --proxy "$(brew --prefix)/bin/gopls-mcp-proxy" \
+            --gopls "$RUNNER_TEMP/gopls-bin/gopls" --go "$(command -v go)"
       - name: Check stable command and uninstall
         shell: bash
         run: |
