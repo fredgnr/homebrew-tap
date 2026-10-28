@@ -54,4 +54,4 @@ jobs:
           "$(brew --prefix)/bin/gopls-mcp-proxy" --version
           brew uninstall --formula fredgnr/tap/gopls-mcp-proxy
           test ! -e "$(brew --prefix)/bin/gopls-mcp-proxy"
-          test -x "$(brew --prefix gopls)/bin/gopls"
+          test ! -L "$(brew --prefix)/bin/gopls-mcp-proxy"
